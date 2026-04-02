@@ -19,7 +19,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from google.cloud import storage as gcs_storage
 from pdf2image import convert_from_path
 from zoneinfo import ZoneInfo
 
@@ -46,6 +45,7 @@ if _google_mod is not None and str(getattr(_google_mod, "__file__", "")).startsw
 
 genai = importlib.import_module("google.genai")
 genai_types = importlib.import_module("google.genai.types")
+gcs_storage = importlib.import_module("google.cloud.storage")
 
 for _p in reversed(_removed_sys_path):
     if _p not in sys.path:
