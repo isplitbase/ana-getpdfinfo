@@ -206,6 +206,8 @@ def _call_openai_json(client: _openai_module.OpenAI, messages: list, max_tokens:
             except Exception:
                 pass
 
+            print(f"[INFO] 🤖 AIレスポンス(raw, {len(text) if text else 0}文字): {text}", flush=True)
+
             if not text:
                 raise ValueError("AI APIレスポンス取得失敗")
 
