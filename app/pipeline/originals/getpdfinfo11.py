@@ -645,19 +645,29 @@ def run_getpdfinfo(files: List[str], file_names: List[str] | None = None) -> Dic
 
     def _apply_shift_up_old_three_labels_rule(result_json: Dict[str, Any]) -> None:
         """
-        labels が ["前々期の前期", "前々期", "前期"] の場合は
-        labels を ["前々期", "前期", "今期"] に補正する。
+        labels が「前々期の前期」「前々期」「前期」の3要素を含む場合は
+        各ラベルを1段新しい期へ補正する（順序は元のまま保持）。
+          前々期の前期 -> 前々期
+          前々期       -> 前期
+          前期         -> 今期
         （AIが「他にもPDFがある」前提で全体を1段古く判定してしまうケースを補正）
         """
+        shift_map = {
+            "前々期の前期": "前々期",
+            "前々期": "前期",
+            "前期": "今期",
+        }
+        target_set = {"前々期の前期", "前々期", "前期"}
+
         for item in result_json.get("results", []) or []:
             labels = _normalize_labels_field(item.get("labels", []))
-            if labels != ["前々期の前期", "前々期", "前期"]:
+            if set(labels) != target_set or len(labels) != 3:
                 continue
 
-            item["labels"] = ["前々期", "前期", "今期"]
+            item["labels"] = [shift_map[label] for label in labels]
 
             reason = str(item.get("reason", "") or "").strip()
-            extra = "labels が『前々期の前期』『前々期』『前期』だったため、1段新しい期へ補正（『前々期』『前期』『今期』）"
+            extra = "labels に『前々期の前期』『前々期』『前期』の3要素が揃っていたため、1段新しい期へ補正（『前々期』『前期』『今期』）"
             item["reason"] = f"{reason} / {extra}" if reason else extra
 
     gcs_client = gcs_storage.Client()
