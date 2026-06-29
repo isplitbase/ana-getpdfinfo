@@ -10,7 +10,13 @@ from google import genai
 from google.genai import types as genai_types
 
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-MODEL = "gemini-2.0-flash"
+try:
+    from model_resolver import resolve_model
+except Exception:
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from model_resolver import resolve_model
+MODEL = resolve_model("gemini", "gemini-2.0-flash")
 
 # PDFごとの識別を安定させるため、番号とファイル名を明示してJSON出力させる
 def build_meta_prompt(pdf_infos: list) -> str:

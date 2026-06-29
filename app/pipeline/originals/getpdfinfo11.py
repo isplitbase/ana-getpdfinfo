@@ -52,7 +52,13 @@ for _p in reversed(_removed_sys_path):
 
 import openai as _openai_module
 
-MODEL = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
+try:
+    from model_resolver import resolve_model
+except Exception:
+    import os as _os, sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+    from model_resolver import resolve_model
+MODEL = resolve_model("openai", os.environ.get("OPENAI_MODEL", "gpt-4.1-mini"))
 
 
 # ────────────────────────────────
