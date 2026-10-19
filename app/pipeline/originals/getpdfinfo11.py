@@ -154,6 +154,8 @@ PDF一覧:
 - ラベルは必ず次の4種類のみを使ってください: ["今期", "前期", "前々期", "前々期の前期"]
 - 必ず各PDFごとに reason を返してください
 - reason には、どの年度・決算年月・相対比較によりそのラベルになったかを簡潔に書いてください
+- 各期の決算日（決算期末日）を「決算日」に YYYY-MM-DD 形式で、labels と同じ順番で出してください。
+- 決算日はPDFに印字された日付から読み取ってください。前期列に日付が無い場合に限り、当期の決算日の1年前として補完してよい。それ以外で読み取れない場合は空文字 "" にしてください。
 - 順番は、送信されたPDF順（PDF1, PDF2, PDF3, ...）で返してください。
 
 出力JSON形式:
@@ -164,14 +166,16 @@ PDF一覧:
       "file_name": "A.pdf",
       "labels": ["今期"],
       "reason": "令和7年9月期が全PDF中で最新のため今期",
-      "年度": ["令和7年度"]
+      "年度": ["令和7年度"],
+      "決算日": ["2025-09-30"]
     }},
     {{
       "pdf_index": 2,
       "file_name": "B.pdf",
       "labels": ["前期"],
       "reason": "令和6年9月期で、全PDF中の最新期の1期前に当たるため前期",
-      "年度": ["令和6年度"]
+      "年度": ["令和6年度"],
+      "決算日": ["2024-09-30"]
     }}
   ]
 }}
@@ -506,6 +510,48 @@ def _normalize_labels_field(label_value: Any) -> List[str]:
     return [s] if s else []
 
 
+# 期ラベルの新しい順。決算日をラベルへ割り当てるときに使う。
+_LABEL_RANK = {"今期": 0, "前期": 1, "前々期": 2, "前々期の前期": 3}
+
+
+def _normalize_end_dates_field(value: Any) -> List[str]:
+    """
+    AI が返した決算日を YYYY-MM-DD に揃える。日付として読めないものは捨てる。
+    「2025-09-30」「2025/9/30」「2025年9月30日」などを受け付ける。
+    """
+    import re
+    from datetime import date
+
+    values = value if isinstance(value, list) else [value]
+    out: List[str] = []
+    for v in values:
+        s = str(v or "").strip()
+        m = re.match(r"^(\d{4})\s*[-/年.]\s*(\d{1,2})\s*[-/月.]\s*(\d{1,2})", s)
+        if not m:
+            continue
+        try:
+            out.append(date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat())
+        except ValueError:
+            continue
+    return out
+
+
+def _end_dates_by_label(item: Dict[str, Any]) -> Dict[str, str]:
+    """
+    ラベルごとの決算日を返す。
+
+    新しい決算日から順に、新しい期のラベルへ割り当てる。
+    AI の並び順に頼らないのは、補正ルール（_apply_single_file_two_year_labels_rule）が
+    AI の並び順と無関係に labels を ["今期", "前期"] へ置き換えるため、
+    添字で対応させると決算日がずれることがあるため。
+    1つのPDF内の期はすべて別の期なので、新しい順に並べれば対応が一意に決まる。
+    """
+    labels = sorted(_normalize_labels_field(item.get("labels", [])),
+                    key=lambda x: _LABEL_RANK.get(x, 99))
+    dates = sorted(set(_normalize_end_dates_field(item.get("決算日", []))), reverse=True)
+    return {label: (dates[i] if i < len(dates) else "") for i, label in enumerate(labels)}
+
+
 def _extract_latest_year_int(item: Dict[str, Any]) -> int | None:
     import re
 
@@ -576,12 +622,13 @@ def build_period_mapping_from_result(result_json: Dict[str, Any]) -> List[Dict[s
         labels = _normalize_labels_field(item.get("labels", []))
         years = _normalize_years_field(item.get("年度", []))
         reason = str(item.get("reason", "") or "")
+        end_dates = _end_dates_by_label(item)
 
         for i, label in enumerate(labels):
             year_text = years[i] if i < len(years) else (years[0] if years else "")
             period_mapping.append({
                 "label": label,
-                "fiscal_end_date": "",
+                "fiscal_end_date": end_dates.get(label, ""),
                 "start_date": "",
                 "end_date": "",
                 "fiscal_period_name": year_text,
@@ -715,6 +762,7 @@ def run_getpdfinfo(files: List[str], file_names: List[str] | None = None) -> Dic
     for item in result_json.get("results", []) or []:
         item["labels"] = _normalize_labels_field(item.get("labels", []))
         item["年度"] = _normalize_years_field(item.get("年度", []))
+        item["決算日"] = _normalize_end_dates_field(item.get("決算日", []))
         item["reason"] = str(item.get("reason", "") or "").strip()
 
     _apply_two_file_gap_rule(result_json)
